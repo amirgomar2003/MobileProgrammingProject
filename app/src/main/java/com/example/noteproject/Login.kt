@@ -23,14 +23,16 @@ import com.example.noteproject.ui.components.FormField
 import com.example.noteproject.ui.components.OrDevider
 import com.example.noteproject.ui.components.ButtonWithArrow
 import com.example.noteproject.ui.components.ButtonWithArrowConfig
+import com.example.noteproject.ui.components.ThemeSwitch
 
 
 @Composable
 fun LoginScreen(
     onLogin: () -> Unit,
-    onRegisterClick: () -> Unit
+    onRegisterClick: () -> Unit,
+    darkTheme: Boolean,
+    onToggleTheme: (Boolean) -> Unit
 ) {
-    // Needed text fields.
     val fields = remember {
         mutableStateListOf(
             FormField("Email Address", "Example: hamifar.taha@gmail.com"),
@@ -48,47 +50,56 @@ fun LoginScreen(
         color = MaterialTheme.colorScheme.background,
         modifier = Modifier.fillMaxSize()
     ) {
-        Column(
-            modifier = Modifier
-                .padding(horizontal = 24.dp)
-                .fillMaxSize()
-                .verticalScroll(rememberScrollState()),
-            verticalArrangement = Arrangement.Center
-        ) {
-            Spacer(Modifier.height(32.dp))
-            Text(
-                "Let's Login",
-                style = MaterialTheme.typography.headlineLarge.copy(fontWeight = FontWeight.Bold),
-                color = MaterialTheme.colorScheme.onBackground
+        Box(modifier = Modifier.fillMaxSize()) {
+            ThemeSwitch(
+                isDark = darkTheme,
+                onToggle = onToggleTheme,
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(16.dp)
             )
-            Spacer(Modifier.height(4.dp))
-            Text(
-                "And notes your idea",
-                color = GrayText,
-                style = MaterialTheme.typography.bodyMedium
-            )
-            Spacer(Modifier.height(32.dp))
-            // Generate text fields.
-            fields.forEachIndexed { index, field ->
-                LabeledTextField(
-                    label = field.label,
-                    value = field.value,
-                    onValueChange = { newValue -> fields[index] = field.copy(value = newValue) },
-                    placeholder = field.placeholder,
-                    isPassword = field.isPassword
-                )
-            }
-            Spacer(Modifier.height(24.dp))
-            ButtonWithArrow(loginButtonConfig)
-            Spacer(Modifier.height(24.dp))
-            OrDevider()
-            Spacer(Modifier.height(12.dp))
-            Row(
-                Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.Center
+
+            Column(
+                modifier = Modifier
+                    .padding(horizontal = 24.dp)
+                    .align(Alignment.Center)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.Center
             ) {
-                TextButton(onClick = onRegisterClick) {
-                    Text("Don’t have any account? Register here", color = PurplePrimary)
+                Spacer(Modifier.height(32.dp))
+                Text(
+                    "Let's Login",
+                    style = MaterialTheme.typography.headlineLarge.copy(fontWeight = FontWeight.Bold),
+                    color = MaterialTheme.colorScheme.onBackground
+                )
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    "And notes your idea",
+                    color = GrayText,
+                    style = MaterialTheme.typography.bodyMedium
+                )
+                Spacer(Modifier.height(32.dp))
+                fields.forEachIndexed { index, field ->
+                    LabeledTextField(
+                        label = field.label,
+                        value = field.value,
+                        onValueChange = { newValue -> fields[index] = field.copy(value = newValue) },
+                        placeholder = field.placeholder,
+                        isPassword = field.isPassword
+                    )
+                }
+                Spacer(Modifier.height(24.dp))
+                ButtonWithArrow(loginButtonConfig)
+                Spacer(Modifier.height(24.dp))
+                OrDevider()
+                Spacer(Modifier.height(12.dp))
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.Center
+                ) {
+                    TextButton(onClick = onRegisterClick) {
+                        Text("Don’t have any account? Register here", color = PurplePrimary)
+                    }
                 }
             }
         }

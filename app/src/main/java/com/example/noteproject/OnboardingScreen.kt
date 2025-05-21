@@ -16,10 +16,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.noteproject.ui.Background
-import com.example.noteproject.ui.PurplePrimary
+import com.example.noteproject.ui.*
 import com.example.noteproject.ui.components.ButtonWithArrow
 import com.example.noteproject.ui.components.ButtonWithArrowConfig
 
@@ -29,8 +29,8 @@ fun OnboardingScreen(
 ) {
     val OnboardingButtonConfig = ButtonWithArrowConfig(
         label = "Let's Get Started",
-        backgroundColor = Background,
-        textColor = Color.Black,
+        backgroundColor = MaterialTheme.colorScheme.background,
+        textColor = MaterialTheme.colorScheme.onBackground,
         onClick = onGetStartedClick
     )
     Box(
@@ -38,12 +38,11 @@ fun OnboardingScreen(
             .fillMaxSize()
             .background(PurplePrimary)
     ) {
-        // Make the column scrollable
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(horizontal = 32.dp)
-                .verticalScroll(rememberScrollState()), // <-- Add this line
+                .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.Center,
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
@@ -56,7 +55,7 @@ fun OnboardingScreen(
             Spacer(modifier = Modifier.height(48.dp))
             Text(
                 text = "Jot Down anything you want to achieve, today or in the future",
-                color = Color.White,
+                color = MaterialTheme.colorScheme.onPrimary,
                 fontSize = 22.sp,
                 fontWeight = FontWeight.Bold,
                 lineHeight = 28.sp,

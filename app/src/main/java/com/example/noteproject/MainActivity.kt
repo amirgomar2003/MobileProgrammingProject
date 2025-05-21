@@ -1,9 +1,9 @@
+// MainActivity.kt
 package com.example.noteproject
 
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.navigation.compose.*
 import com.example.noteproject.ui.theme.NoteProjectTheme
@@ -12,7 +12,9 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
-            NoteProjectTheme {
+            var isDarkTheme by remember { mutableStateOf(false) }
+
+            NoteProjectTheme(darkTheme = isDarkTheme) {
                 val navController = rememberNavController()
                 NavHost(navController, startDestination = "onboarding") {
                     composable("onboarding") {
@@ -23,13 +25,17 @@ class MainActivity : ComponentActivity() {
                     composable("login") {
                         LoginScreen(
                             onLogin = { /* Handle login */ },
-                            onRegisterClick = { navController.navigate("register") }
+                            onRegisterClick = { navController.navigate("register") },
+                            darkTheme = isDarkTheme,
+                            onToggleTheme = { isDarkTheme = it }
                         )
                     }
                     composable("register") {
                         RegisterScreen(
                             onRegister = { /* Handle registration */ },
-                            onLoginClick = { navController.navigate("login") }
+                            onLoginClick = { navController.navigate("login") },
+                            darkTheme = isDarkTheme,
+                            onToggleTheme = { isDarkTheme = it }
                         )
                     }
                 }

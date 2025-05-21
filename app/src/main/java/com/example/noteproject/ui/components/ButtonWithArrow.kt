@@ -19,6 +19,9 @@ import com.example.noteproject.ui.GrayText
 
 @Composable
 fun ButtonWithArrow(config: ButtonWithArrowConfig) {
+    val background = config.backgroundColor ?: MaterialTheme.colorScheme.primary
+    val textColor = config.textColor ?: MaterialTheme.colorScheme.onPrimary
+
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -28,14 +31,14 @@ fun ButtonWithArrow(config: ButtonWithArrowConfig) {
             onClick = config.onClick,
             modifier = Modifier.fillMaxSize(),
             shape = RoundedCornerShape(28.dp),
-            colors = ButtonDefaults.buttonColors(containerColor = config.backgroundColor),
+            colors = ButtonDefaults.buttonColors(containerColor = background),
             contentPadding = PaddingValues(0.dp)
         ) {
             Box(Modifier.fillMaxSize()) {
                 Text(
                     config.label,
                     modifier = Modifier.align(Alignment.Center),
-                    color = config.textColor,
+                    color = textColor,
                     fontSize = 18.sp,
                     fontWeight = FontWeight.Bold
                 )
@@ -45,7 +48,7 @@ fun ButtonWithArrow(config: ButtonWithArrowConfig) {
                     modifier = Modifier
                         .align(Alignment.CenterEnd)
                         .padding(end = 16.dp),
-                    tint = config.textColor
+                    tint = textColor
                 )
             }
         }
