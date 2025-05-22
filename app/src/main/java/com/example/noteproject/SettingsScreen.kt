@@ -117,9 +117,8 @@ fun SettingsScreen(
                     .fillMaxWidth()
             )
             Spacer(Modifier.weight(1f))
-            // App version at the bottom
             Text(
-                "Taha Notes v1.1",
+                "Gomar/Sheikh Notes v1.1",
                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f),
                 style = MaterialTheme.typography.labelSmall,
                 modifier = Modifier
