@@ -5,17 +5,13 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowForward
-import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.PasswordVisualTransformation
-import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.noteproject.ui.GrayText
 
 @Composable
 fun ButtonWithArrow(config: ButtonWithArrowConfig) {
@@ -29,6 +25,7 @@ fun ButtonWithArrow(config: ButtonWithArrowConfig) {
     ) {
         Button(
             onClick = config.onClick,
+            enabled = config.enabled,
             modifier = Modifier.fillMaxSize(),
             shape = RoundedCornerShape(28.dp),
             colors = ButtonDefaults.buttonColors(containerColor = background),
@@ -59,5 +56,6 @@ data class ButtonWithArrowConfig(
     val label: String,
     val backgroundColor: Color,
     val textColor: Color,
-    val onClick: () -> Unit
-)
+    val onClick: () -> Unit,
+    val enabled: Boolean = true
+    )
