@@ -5,11 +5,13 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.runtime.*
 import androidx.compose.ui.res.painterResource
+import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavType
 import androidx.navigation.navArgument
 import androidx.navigation.compose.*
 import com.example.noteproject.ui.theme.NoteProjectTheme
 import com.example.noteproject.ui.components.Note
+import com.example.noteproject.ui.viewmodel.AuthViewModel
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -17,6 +19,8 @@ class MainActivity : ComponentActivity() {
         setContent {
             var isDarkTheme by remember { mutableStateOf(false) }
             var showLogoutDialog by remember { mutableStateOf(false) }
+            val authViewModel: AuthViewModel = viewModel()
+            val authUiState by authViewModel.uiState.collectAsState()
 
             val notes = remember { mutableStateListOf<Note>() }
             var showDeleteDialog by remember { mutableStateOf(false) }
@@ -24,7 +28,11 @@ class MainActivity : ComponentActivity() {
 
             NoteProjectTheme(darkTheme = isDarkTheme) {
                 val navController = rememberNavController()
-                NavHost(navController, startDestination = "onboarding") {
+                
+                // Determine start destination based on login status
+                val startDestination = if (authUiState.isLoggedIn) "home" else "onboarding"
+                
+                NavHost(navController, startDestination = startDestination) {
                     composable("onboarding") {
                         OnboardingScreen(
                             onGetStartedClick = { navController.navigate("login") }
@@ -32,24 +40,42 @@ class MainActivity : ComponentActivity() {
                     }
                     composable("login") {
                         LoginScreen(
-                            onLogin = { navController.navigate("home") },
+                            onLogin = { username, password ->
+                                authViewModel.login(username, password) {
+                                    navController.navigate("home") {
+                                        popUpTo("onboarding") { inclusive = true }
+                                        launchSingleTop = true
+                                    }
+                                }
+                            },
                             onRegisterClick = { navController.navigate("register") },
                             darkTheme = isDarkTheme,
-                            onToggleTheme = { isDarkTheme = it }
+                            onToggleTheme = { isDarkTheme = it },
+                            authUiState = authUiState,
+                            onClearError = { authViewModel.clearError() }
                         )
                     }
                     composable("register") {
                         RegisterScreen(
-                            onRegister = { navController.navigate("settings") },
+                            onRegister = { username, password, email, firstName, lastName ->
+                                authViewModel.register(username, password, email, firstName, lastName) {
+                                    navController.navigate("home") {
+                                        popUpTo("onboarding") { inclusive = true }
+                                        launchSingleTop = true
+                                    }
+                                }
+                            },
                             onLoginClick = { navController.navigate("login") },
                             darkTheme = isDarkTheme,
-                            onToggleTheme = { isDarkTheme = it }
+                            onToggleTheme = { isDarkTheme = it },
+                            authUiState = authUiState,
+                            onClearError = { authViewModel.clearError() }
                         )
                     }
                     composable("settings") {
                         SettingsScreen(
-                            userName = "Taha Hamifar",
-                            userEmail = "hamifar.taha@gmail.com",
+                            userName = authUiState.userInfo?.let { "${it.firstName} ${it.lastName}" } ?: "User",
+                            userEmail = authUiState.userInfo?.email ?: "user@example.com",
                             userAvatar = painterResource(id = R.drawable.onboarding),
                             onBack = { navController.popBackStack() },
                             onChangePassword = { navController.navigate("change_password") },
@@ -58,8 +84,9 @@ class MainActivity : ComponentActivity() {
                             onDismissLogoutDialog = { showLogoutDialog = false },
                             onConfirmLogout = {
                                 showLogoutDialog = false
-                                navController.navigate("login") {
-                                    popUpTo("onboarding") { inclusive = false }
+                                authViewModel.logout()
+                                navController.navigate("onboarding") {
+                                    popUpTo("home") { inclusive = true }
                                     launchSingleTop = true
                                 }
                             },
@@ -74,14 +101,20 @@ class MainActivity : ComponentActivity() {
                         ChangePasswordScreen(
                             onBack = { navController.popBackStack() },
                             onSubmit = { old, new, retype ->
-                                navController.popBackStack()
+                                authViewModel.changePassword(old, new) {
+                                    // After successful password change, navigate back to settings
+                                    navController.popBackStack()
+                                }
                             },
                             currentPassword = currentPassword,
                             newPassword = newPassword,
                             retypePassword = retypePassword,
                             onCurrentPasswordChange = { currentPassword = it },
                             onNewPasswordChange = { newPassword = it },
-                            onRetypePasswordChange = { retypePassword = it }
+                            onRetypePasswordChange = { retypePassword = it },
+                            authUiState = authUiState,
+                            onClearError = { authViewModel.clearError() },
+                            onClearSuccess = { authViewModel.clearSuccess() }
                         )
                     }
                     composable("home") {
