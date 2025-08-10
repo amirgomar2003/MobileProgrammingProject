@@ -1,21 +1,19 @@
 package com.example.noteproject
 
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowForward
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.example.noteproject.ui.GrayText
 import com.example.noteproject.ui.PurplePrimary
 import com.example.noteproject.ui.components.LabeledTextField
@@ -24,26 +22,44 @@ import com.example.noteproject.ui.components.OrDevider
 import com.example.noteproject.ui.components.ButtonWithArrow
 import com.example.noteproject.ui.components.ButtonWithArrowConfig
 import com.example.noteproject.ui.components.ThemeSwitch
+import com.example.noteproject.ui.viewmodel.AuthUiState
 
 
 @Composable
 fun LoginScreen(
-    onLogin: () -> Unit,
+    onLogin: (String, String) -> Unit,
     onRegisterClick: () -> Unit,
     darkTheme: Boolean,
-    onToggleTheme: (Boolean) -> Unit
+    onToggleTheme: (Boolean) -> Unit,
+    authUiState: AuthUiState,
+    onClearError: () -> Unit
 ) {
     val fields = remember {
         mutableStateListOf(
-            FormField("Email Address", "Example: hamifar.taha@gmail.com"),
+            FormField("Username", "Example: hamifar.taha"),
             FormField("Password", "********", isPassword = true),
         )
     }
+    
+    // Clear error when user starts typing
+    LaunchedEffect(fields[0].value, fields[1].value) {
+        if (authUiState.errorMessage != null) {
+            onClearError()
+        }
+    }
+    
     val loginButtonConfig = ButtonWithArrowConfig(
-        label = "Login",
+        label = if (authUiState.isLoading) "Logging in..." else "Login",
         backgroundColor = PurplePrimary,
         textColor = Color.White,
-        onClick = onLogin
+        onClick = { 
+            val username = fields[0].value.trim()
+            val password = fields[1].value
+            if (username.isNotEmpty() && password.isNotEmpty()) {
+                onLogin(username, password)
+            }
+        },
+        enabled = !authUiState.isLoading && fields[0].value.trim().isNotEmpty() && fields[1].value.isNotEmpty()
     )
 
     Surface(
@@ -89,6 +105,83 @@ fun LoginScreen(
                     )
                 }
                 Spacer(Modifier.height(24.dp))
+                
+                // Show success message if any
+                authUiState.successMessage?.let { successMessage ->
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.primaryContainer
+                        )
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(16.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.CheckCircle,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Text(
+                                text = successMessage,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                style = MaterialTheme.typography.bodyMedium,
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
+                    }
+                    Spacer(Modifier.height(16.dp))
+                }
+                
+                // Show error message if any
+                authUiState.errorMessage?.let { errorMessage ->
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(
+                            containerColor = if (authUiState.isNetworkError) {
+                                MaterialTheme.colorScheme.secondaryContainer
+                            } else {
+                                MaterialTheme.colorScheme.errorContainer
+                            }
+                        )
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(16.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = if (authUiState.isNetworkError) {
+                                    Icons.Default.Warning
+                                } else {
+                                    Icons.Default.Info
+                                },
+                                contentDescription = null,
+                                tint = if (authUiState.isNetworkError) {
+                                    MaterialTheme.colorScheme.onSecondaryContainer
+                                } else {
+                                    MaterialTheme.colorScheme.onErrorContainer
+                                },
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Text(
+                                text = errorMessage,
+                                color = if (authUiState.isNetworkError) {
+                                    MaterialTheme.colorScheme.onSecondaryContainer
+                                } else {
+                                    MaterialTheme.colorScheme.onErrorContainer
+                                },
+                                style = MaterialTheme.typography.bodyMedium,
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
+                    }
+                    Spacer(Modifier.height(16.dp))
+                }
+                
                 ButtonWithArrow(loginButtonConfig)
                 Spacer(Modifier.height(24.dp))
                 OrDevider()

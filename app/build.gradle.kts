@@ -54,6 +54,14 @@ dependencies {
     implementation(libs.compose.navigation)
     implementation(libs.compose.material.icons.extended)
     implementation(libs.androidx.room.common.jvm)
+    
+    // Network dependencies
+    implementation(libs.retrofit)
+    implementation(libs.retrofit.gson)
+    implementation(libs.okhttp)
+    implementation(libs.okhttp.logging)
+    implementation(libs.gson)
+    implementation(libs.androidx.lifecycle.viewmodel.compose)
 
 
     testImplementation(libs.junit)
