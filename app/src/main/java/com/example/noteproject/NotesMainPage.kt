@@ -14,12 +14,14 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -35,12 +37,23 @@ fun NotesMainPage(
     onSettingsClick: () -> Unit,
     searchQuery: String,
     onSearchQueryChange: (String) -> Unit,
-    isDarkTheme: Boolean
+    isDarkTheme: Boolean,
+    isLoading: Boolean = false,
+    errorMessage: String? = null,
+    onRetry: (() -> Unit)? = null,
+    onLoadMore: (() -> Unit)? = null,
+    hasNextPage: Boolean = false,
+    onRefresh: (() -> Unit)? = null,
+    hasNotes: Boolean = false // Whether user has any notes (for search bar visibility)
 ) {
+    // Filter notes locally for immediate feedback, backend search will update the list
     val filteredNotes = if (searchQuery.isBlank()) {
         notes
     } else {
-        notes.filter { it.header.contains(searchQuery, ignoreCase = true) }
+        notes.filter { 
+            it.header.contains(searchQuery, ignoreCase = true) || 
+            it.body.contains(searchQuery, ignoreCase = true) 
+        }
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
@@ -79,12 +92,13 @@ fun NotesMainPage(
                     .padding(padding)
                     .fillMaxSize()
             ) {
-                if (notes.isNotEmpty()) {
+                // Show search bar if user has any notes (not just current search results)
+                if (hasNotes || searchQuery.isNotBlank()) {
                     Spacer(Modifier.height(20.dp))
                     OutlinedTextField(
                         value = searchQuery,
                         onValueChange = onSearchQueryChange,
-                        placeholder = { Text("Search...") },
+                        placeholder = { Text("Search titles and content...") },
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(16.dp),
@@ -94,42 +108,129 @@ fun NotesMainPage(
                         }
                     )
                 }
-                Text(
-                    "Notes",
-                    style = MaterialTheme.typography.titleLarge,
-                    modifier = Modifier
-                        .padding(horizontal = 16.dp, vertical = 20.dp)
-                )
-                if (notes.isEmpty()) {
-                    Spacer(Modifier.height(20.dp))
-                    Column(
+                
+                // Error message
+                errorMessage?.let { error ->
+                    Card(
                         modifier = Modifier
-                            .fillMaxSize()
-                            .padding(bottom = 80.dp),
-                        verticalArrangement = Arrangement.Center,
-                        horizontalAlignment = Alignment.CenterHorizontally
+                            .fillMaxWidth()
+                            .padding(16.dp),
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.errorContainer
+                        )
                     ) {
-                        Image(
-                            painter = painterResource(id = R.drawable.jurney),
-                            contentDescription = "Start Your Journey",
-                            modifier = Modifier.size(180.dp)
-                        )
-                        Spacer(Modifier.height(24.dp))
+                        Column(
+                            modifier = Modifier.padding(16.dp)
+                        ) {
+                            Text(
+                                text = error,
+                                color = MaterialTheme.colorScheme.onErrorContainer,
+                                style = MaterialTheme.typography.bodyMedium
+                            )
+                            if (onRetry != null) {
+                                Spacer(Modifier.height(8.dp))
+                                TextButton(onClick = onRetry) {
+                                    Text("Retry", color = MaterialTheme.colorScheme.onErrorContainer)
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                // Header section with conditional refresh button
+                if (onRefresh != null) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
                         Text(
-                            "Start Your Journey",
-                            style = MaterialTheme.typography.headlineSmall,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onBackground
+                            "Notes",
+                            style = MaterialTheme.typography.titleLarge,
+                            modifier = Modifier.padding(vertical = 20.dp)
                         )
-                        Spacer(Modifier.height(8.dp))
-                        Text(
-                            "Every big step start with small step.\nNotes your first idea and start your journey!",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
-                            textAlign = TextAlign.Center
-                        )
+                        IconButton(
+                            onClick = onRefresh,
+                            modifier = Modifier.padding(vertical = 20.dp)
+                        ) {
+                            Icon(
+                                Icons.Filled.Refresh,
+                                contentDescription = "Refresh Notes",
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                        }
                     }
                 } else {
+                    Text(
+                        "Notes",
+                        style = MaterialTheme.typography.titleLarge,
+                        modifier = Modifier
+                            .padding(horizontal = 16.dp, vertical = 20.dp)
+                    )
+                }
+                
+                // Show content based on state
+                when {
+                    // Show empty state only when user has no notes at all
+                    !hasNotes -> {
+                        Spacer(Modifier.height(20.dp))
+                        Column(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(bottom = 80.dp),
+                            verticalArrangement = Arrangement.Center,
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Image(
+                                painter = painterResource(id = R.drawable.jurney),
+                                contentDescription = "Start Your Journey",
+                                modifier = Modifier.size(180.dp)
+                            )
+                            Spacer(Modifier.height(24.dp))
+                            Text(
+                                "Start Your Journey",
+                                style = MaterialTheme.typography.headlineSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onBackground
+                            )
+                            Spacer(Modifier.height(8.dp))
+                            Text(
+                                "Every big step start with small step.\nNotes your first idea and start your journey!",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+                                textAlign = TextAlign.Center
+                            )
+                        }
+                    }
+                    // Show no search results message when search returns empty
+                    searchQuery.isNotBlank() && filteredNotes.isEmpty() -> {
+                        Spacer(Modifier.height(20.dp))
+                        Column(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(bottom = 80.dp),
+                            verticalArrangement = Arrangement.Center,
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Text(
+                                "No notes found",
+                                style = MaterialTheme.typography.headlineSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onBackground
+                            )
+                            Spacer(Modifier.height(8.dp))
+                            Text(
+                                "Try searching with different keywords",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+                                textAlign = TextAlign.Center
+                            )
+                        }
+                    }
+                    // Show notes grid
+                    else -> {
                     Spacer(Modifier.height(20.dp))
                     LazyVerticalGrid(
                         columns = GridCells.Fixed(2),
@@ -142,8 +243,47 @@ fun NotesMainPage(
                                 onClick = { onNoteClick(note) }
                             )
                         }
+                        
+                        // Add loading indicator at the end if loading more
+                        if (isLoading && filteredNotes.isNotEmpty()) {
+                            items(1) {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(16.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    CircularProgressIndicator()
+                                }
+                            }
+                        }
+                        
+                        // Add load more button if there are more pages
+                        if (hasNextPage && !isLoading && onLoadMore != null) {
+                            items(1) {
+                                OutlinedButton(
+                                    onClick = onLoadMore,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(16.dp)
+                                ) {
+                                    Text("Load More")
+                                }
+                            }
+                        }
                     }
                 }
+            }
+        }
+        } // Close when statement
+
+        // Show loading indicator when first loading
+        if (isLoading && filteredNotes.isEmpty()) {
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center
+            ) {
+                CircularProgressIndicator()
             }
         }
 
