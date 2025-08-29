@@ -1,6 +1,7 @@
 package com.example.noteproject.data.api
 
 import com.example.noteproject.data.local.TokenManager
+import kotlinx.coroutines.runBlocking
 import okhttp3.Interceptor
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
@@ -19,6 +20,22 @@ class ApiClient(private val tokenManager: TokenManager) {
         level = HttpLoggingInterceptor.Level.BODY
     }
     
+    // Separate client for refresh calls (no auth interceptor to avoid circular dependency)
+    private val refreshClient = OkHttpClient.Builder()
+        .connectTimeout(TIMEOUT_SECONDS, TimeUnit.SECONDS)
+        .readTimeout(TIMEOUT_SECONDS, TimeUnit.SECONDS)
+        .writeTimeout(TIMEOUT_SECONDS, TimeUnit.SECONDS)
+        .addInterceptor(loggingInterceptor)
+        .build()
+    
+    private val refreshRetrofit = Retrofit.Builder()
+        .baseUrl(BASE_URL)
+        .client(refreshClient)
+        .addConverterFactory(GsonConverterFactory.create())
+        .build()
+    
+    private val refreshAuthService: AuthApiService = refreshRetrofit.create(AuthApiService::class.java)
+    
     private val authInterceptor = Interceptor { chain ->
         val originalRequest = chain.request()
         val requestBuilder = originalRequest.newBuilder()
@@ -33,9 +50,40 @@ class ApiClient(private val tokenManager: TokenManager) {
 
         val response = chain.proceed(requestBuilder.build())
         
-        // Simple 401 handling - just clear tokens, let the app handle re-authentication
-        if (response.code == 401 && requiresAuth(path)) {
-            // Clear invalid tokens
+        // Handle 401 with automatic token refresh
+        if (response.code == 401 && requiresAuth(path) && !path.contains("/api/auth/token/refresh/")) {
+            // Try to refresh the token automatically
+            val refreshToken = tokenManager.getRefreshToken()
+            if (!refreshToken.isNullOrBlank()) {
+                try {
+                    // Make synchronous refresh call using separate client
+                    val refreshResponse = runBlocking {
+                        refreshAuthService.refreshToken(
+                            com.example.noteproject.data.model.TokenRefreshRequest(refreshToken)
+                        )
+                    }
+                    
+                    if (refreshResponse.isSuccessful) {
+                        refreshResponse.body()?.let { tokenRefreshResponse ->
+                            // Save the new access token
+                            tokenManager.saveTokens(tokenRefreshResponse.access, refreshToken)
+                            
+                            // Retry the original request with new token
+                            val newRequest = originalRequest.newBuilder()
+                                .header("Authorization", "Bearer ${tokenRefreshResponse.access}")
+                                .build()
+                            
+                            // Close the original response and return the new one
+                            response.close()
+                            return@Interceptor chain.proceed(newRequest)
+                        }
+                    }
+                } catch (e: Exception) {
+                    // Refresh failed, continue with clearing tokens
+                }
+            }
+            
+            // If refresh failed or no refresh token, clear tokens
             tokenManager.clearTokens()
         }
         
@@ -46,6 +94,7 @@ class ApiClient(private val tokenManager: TokenManager) {
         return when {
             path.contains("/api/auth/userinfo/") -> true
             path.contains("/api/auth/change-password/") -> true
+            path.contains("/api/notes/") -> true
             path.contains("/api/auth/token/refresh/") -> false
             path.contains("/api/auth/token/") -> false
             path.contains("/api/auth/register/") -> false
@@ -68,4 +117,5 @@ class ApiClient(private val tokenManager: TokenManager) {
         .build()
     
     val authService: AuthApiService = retrofit.create(AuthApiService::class.java)
+    val notesService: NotesApiService = retrofit.create(NotesApiService::class.java)
 }
