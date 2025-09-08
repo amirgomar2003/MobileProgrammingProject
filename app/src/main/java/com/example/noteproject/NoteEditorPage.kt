@@ -27,7 +27,9 @@ fun NoteEditorPage(
     showDeleteDialog: Boolean,
     onDismissDelete: () -> Unit,
     onConfirmDelete: () -> Unit,
-    onSave: () -> Unit
+    onSave: (title: String, body: String) -> Unit,
+    isLoading: Boolean = false,
+    errorMessage: String? = null
 ) {
     var header by remember { mutableStateOf(note.header) }
     var body by remember { mutableStateOf(note.body) }
@@ -42,8 +44,28 @@ fun NoteEditorPage(
                     }
                 },
                 actions = {
-                    IconButton(onClick = onSave) {
-                        Icon(Icons.Filled.Check, contentDescription = "Save")
+                    if (isLoading) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(24.dp),
+                            strokeWidth = 2.dp
+                        )
+                    } else {
+                        IconButton(
+                            onClick = { 
+                                // Validate that both fields are not blank before saving
+                                if (header.isBlank() || body.isBlank()) {
+                                    // Could show a toast or snackbar here if desired
+                                    return@IconButton
+                                }
+                                onSave(header, body) 
+                            },
+                            enabled = !isLoading && header.isNotBlank() && body.isNotBlank()
+                        ) {
+                            Icon(
+                                Icons.Filled.Check, 
+                                contentDescription = if (note.id < 0) "Create Note" else "Save Note"
+                            )
+                        }
                     }
                 }
             )
@@ -58,7 +80,7 @@ fun NoteEditorPage(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    "Last edited on ${formatDate(note.lastEdited)}",
+                    if (note.id < 0) "New Note" else "Last edited on ${formatDate(note.lastEdited)}",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
                 )
@@ -82,40 +104,69 @@ fun NoteEditorPage(
                 .fillMaxSize()
                 .padding(24.dp)
         ) {
+            // Error message
+            errorMessage?.let { error ->
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 16.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.errorContainer
+                    )
+                ) {
+                    Text(
+                        text = error,
+                        color = MaterialTheme.colorScheme.onErrorContainer,
+                        style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.padding(16.dp)
+                    )
+                }
+            }
+            
             OutlinedTextField(
+                shape = RoundedCornerShape(15.dp),
                 value = header,
                 onValueChange = {
                     header = it
                     onHeaderChange(it)
                 },
-                placeholder = { Text("Header") },
+                placeholder = { Text(if (note.id < 0) "Enter note title..." else "Note title") },
                 textStyle = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold),
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier.fillMaxWidth().padding(5.dp),
+                enabled = !isLoading,
             )
             Spacer(Modifier.height(12.dp))
             OutlinedTextField(
+                shape = RoundedCornerShape(16.dp),
                 value = body,
                 onValueChange = {
                     body = it
                     onBodyChange(it)
                 },
-                placeholder = { Text("Write your note here...") },
+                placeholder = { Text(if (note.id < 0) "Write your note here..." else "Write your note here...") },
                 textStyle = MaterialTheme.typography.bodyMedium,
                 modifier = Modifier
                     .fillMaxWidth()
                     .weight(1f)
+                    .padding(5.dp),
+                enabled = !isLoading,
             )
         }
 
         if (showDeleteDialog) {
             AlertDialog(
                 onDismissRequest = onDismissDelete,
-                title = { Text("Want to Delete this Note?") },
+                title = { 
+                    Text(if (note.id < 0) "Discard this note?" else "Want to Delete this Note?") 
+                },
+                text = if (note.id < 0) {
+                    { Text("This note hasn't been saved yet. Are you sure you want to discard it?") }
+                } else null,
                 confirmButton = {
                     TextButton(onClick = onConfirmDelete) {
                         Icon(Icons.Filled.Delete, contentDescription = null, tint = MaterialTheme.colorScheme.error)
                         Spacer(Modifier.width(8.dp))
-                        Text("Delete Note", color = MaterialTheme.colorScheme.error)
+                        Text(if (note.id < 0) "Discard" else "Delete Note", color = MaterialTheme.colorScheme.error)
                     }
                 },
                 dismissButton = {
