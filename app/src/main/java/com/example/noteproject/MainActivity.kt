@@ -186,7 +186,10 @@ class MainActivity : ComponentActivity() {
                                 searchQuery = ""
                                 notesViewModel.loadNotes(refresh = true)
                             },
-                            hasNotes = userHasNotes
+                            hasNotes = userHasNotes,
+                            isOfflineMode = notesUiState.isOfflineMode,
+                            isSyncing = notesUiState.isSyncing,
+                            onSyncClick = { notesViewModel.syncNow() }
                         )
                     }
                     composable(

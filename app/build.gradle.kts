@@ -2,6 +2,7 @@ plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.compose.compiler)
+    alias(libs.plugins.ksp)
 }
 
 android {
@@ -53,7 +54,11 @@ dependencies {
     implementation(libs.androidx.material3.android)
     implementation(libs.compose.navigation)
     implementation(libs.compose.material.icons.extended)
-    implementation(libs.androidx.room.common.jvm)
+    
+    // Room database dependencies
+    implementation(libs.androidx.room.runtime)
+    implementation(libs.androidx.room.ktx)
+    ksp(libs.androidx.room.compiler)
     
     // Network dependencies
     implementation(libs.retrofit)
@@ -62,6 +67,12 @@ dependencies {
     implementation(libs.okhttp.logging)
     implementation(libs.gson)
     implementation(libs.androidx.lifecycle.viewmodel.compose)
+    
+    // Coroutines
+    implementation(libs.kotlinx.coroutines.android)
+    
+    // WorkManager for background sync
+    implementation(libs.androidx.work.runtime.ktx)
 
 
     testImplementation(libs.junit)

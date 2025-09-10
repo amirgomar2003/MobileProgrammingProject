@@ -215,14 +215,35 @@ class AuthViewModel(application: Application) : AndroidViewModel(application) {
     
     private fun tryRefreshToken() {
         viewModelScope.launch {
-            when (val result = authRepository.refreshAccessToken()) {
+            // Check if we can refresh token (have refresh token)
+            if (!authRepository.canRefreshToken()) {
+                _uiState.value = _uiState.value.copy(
+                    isLoggedIn = false,
+                    userInfo = null,
+                    errorMessage = "Session expired. Please log in again."
+                )
+                return@launch
+            }
+            
+            when (val result = authRepository.refreshAccessTokenIfPossible()) {
                 is ApiResult.Success -> {
                     // Token refreshed successfully, try to get user info again
                     refreshUserInfo()
                 }
-                is ApiResult.Error, is ApiResult.NetworkError -> {
-                    // Refresh failed, logout the user
+                is ApiResult.Error -> {
+                    // Refresh token is invalid or expired, user needs to log in again
                     logout()
+                }
+                is ApiResult.NetworkError -> {
+                    // Network error during token refresh, keep user logged in for offline access
+                    // Use cached user info if available
+                    val cachedUserInfo = authRepository.getCachedUserInfo()
+                    _uiState.value = _uiState.value.copy(
+                        isLoggedIn = true,
+                        userInfo = cachedUserInfo,
+                        errorMessage = "Network error. Operating in offline mode.",
+                        isNetworkError = true
+                    )
                 }
             }
         }

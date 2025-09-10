@@ -1,6 +1,5 @@
 package com.example.noteproject
 
-import android.widget.Space
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -14,7 +13,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
-import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.filled.Add
@@ -22,6 +20,9 @@ import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.CloudOff
+import androidx.compose.material.icons.filled.Sync
+import androidx.compose.material.icons.filled.SyncProblem
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -37,14 +38,16 @@ fun NotesMainPage(
     onSettingsClick: () -> Unit,
     searchQuery: String,
     onSearchQueryChange: (String) -> Unit,
-    isDarkTheme: Boolean,
     isLoading: Boolean = false,
     errorMessage: String? = null,
     onRetry: (() -> Unit)? = null,
     onLoadMore: (() -> Unit)? = null,
     hasNextPage: Boolean = false,
     onRefresh: (() -> Unit)? = null,
-    hasNotes: Boolean = false // Whether user has any notes (for search bar visibility)
+    hasNotes: Boolean = false, // Whether user has any notes (for search bar visibility)
+    isOfflineMode: Boolean = false,
+    isSyncing: Boolean = false,
+    onSyncClick: (() -> Unit)? = null
 ) {
     // Filter notes locally for immediate feedback, backend search will update the list
     val filteredNotes = if (searchQuery.isBlank()) {
@@ -92,9 +95,68 @@ fun NotesMainPage(
                     .padding(padding)
                     .fillMaxSize()
             ) {
+                // Offline/Sync Status Indicator
+                if (isOfflineMode || isSyncing) {
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 8.dp),
+                        colors = CardDefaults.cardColors(
+                            containerColor = if (isOfflineMode) {
+                                MaterialTheme.colorScheme.tertiaryContainer
+                            } else {
+                                MaterialTheme.colorScheme.primaryContainer
+                            }
+                        )
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = when {
+                                    isSyncing -> Icons.Default.Sync
+                                    isOfflineMode -> Icons.Default.CloudOff
+                                    else -> Icons.Default.SyncProblem
+                                },
+                                contentDescription = null,
+                                tint = if (isOfflineMode) {
+                                    MaterialTheme.colorScheme.onTertiaryContainer
+                                } else {
+                                    MaterialTheme.colorScheme.onPrimaryContainer
+                                }
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Text(
+                                text = when {
+                                    isSyncing -> "Syncing..."
+                                    isOfflineMode -> "Offline mode - Changes will sync when online"
+                                    else -> "Sync available"
+                                },
+                                style = MaterialTheme.typography.bodySmall,
+                                color = if (isOfflineMode) {
+                                    MaterialTheme.colorScheme.onTertiaryContainer
+                                } else {
+                                    MaterialTheme.colorScheme.onPrimaryContainer
+                                },
+                                modifier = Modifier.weight(1f)
+                            )
+                            
+                            if (isOfflineMode && !isSyncing && onSyncClick != null) {
+                                TextButton(
+                                    onClick = onSyncClick,
+                                    modifier = Modifier.padding(start = 8.dp)
+                                ) {
+                                    Text("Retry Sync")
+                                }
+                            }
+                        }
+                    }
+                }
+                
                 // Show search bar if user has any notes (not just current search results)
                 if (hasNotes || searchQuery.isNotBlank()) {
-                    Spacer(Modifier.height(20.dp))
+                    Spacer(Modifier.height(8.dp))
                     OutlinedTextField(
                         value = searchQuery,
                         onValueChange = onSearchQueryChange,
@@ -304,7 +366,8 @@ fun NotesMainPage(
 
 @Composable
 fun NoteCard(note: Note, onClick: () -> Unit) {
-    val bgColor = PastelColors[note.id % PastelColors.size].copy(alpha = 0.5f)
+    val colorIndex = kotlin.math.abs(note.id % PastelColors.size)
+    val bgColor = PastelColors[colorIndex].copy(alpha = 0.5f)
 
     Card(
         modifier = Modifier

@@ -110,18 +110,7 @@ class NotesRepository(
         }
     }
     
-    suspend fun createNotesBulk(notes: List<CreateNoteRequest>, page: Int? = null): ApiResult<PaginatedNotesResponse> {
-        return try {
-            if (!tokenManager.isLoggedIn()) {
-                return ApiResult.Error("Not authenticated")
-            }
-            
-            val response = apiClient.notesService.createNotesBulk(notes, page)
-            handleResponse(response) { it }
-        } catch (e: Exception) {
-            handleNetworkException(e)
-        }
-    }
+
     
     private fun <T, R> handleResponse(
         response: Response<T>,
