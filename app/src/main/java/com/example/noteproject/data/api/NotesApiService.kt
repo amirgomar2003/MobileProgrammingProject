@@ -33,11 +33,7 @@ interface NotesApiService {
     @DELETE("api/notes/{id}/")
     suspend fun deleteNote(@Path("id") id: Int): Response<Unit>
     
-    @POST("api/notes/bulk")
-    suspend fun createNotesBulk(
-        @Body notes: List<CreateNoteRequest>,
-        @Query("page") page: Int? = null
-    ): Response<PaginatedNotesResponse>
+
     
     @GET("api/notes/filter")
     suspend fun searchNotes(

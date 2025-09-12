@@ -4,13 +4,14 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.noteproject.data.api.ApiClient
+import com.example.noteproject.data.local.NetworkMonitor
+import com.example.noteproject.data.local.NotesDatabase
 import com.example.noteproject.data.local.TokenManager
 import com.example.noteproject.data.model.*
 import com.example.noteproject.data.repository.ApiResult
-import com.example.noteproject.data.repository.NotesRepository
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
+import com.example.noteproject.data.repository.OfflineFirstNotesRepository
+import com.example.noteproject.data.sync.SyncWorker
+import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.*
@@ -25,19 +26,53 @@ data class NotesUiState(
     val hasNextPage: Boolean = false,
     val hasPreviousPage: Boolean = false,
     val currentPage: Int = 1,
-    val totalCount: Int = 0
+    val totalCount: Int = 0,
+    val isOfflineMode: Boolean = false,
+    val isSyncing: Boolean = false
 )
 
 class NotesViewModel(application: Application) : AndroidViewModel(application) {
     
+    private val context = application
     private val tokenManager = TokenManager(application)
     private val apiClient = ApiClient(tokenManager)
-    private val notesRepository = NotesRepository(apiClient, tokenManager)
+    private val database = NotesDatabase.getDatabase(application)
+    private val networkMonitor = NetworkMonitor(application)
+    private val notesRepository = OfflineFirstNotesRepository(
+        context = application,
+        apiClient = apiClient,
+        tokenManager = tokenManager,
+        database = database,
+        networkMonitor = networkMonitor
+    )
     
     private val _uiState = MutableStateFlow(NotesUiState())
     val uiState: StateFlow<NotesUiState> = _uiState.asStateFlow()
     
     private var currentSearchQuery: String? = null
+    
+    init {
+        // Monitor network connectivity
+        viewModelScope.launch {
+            networkMonitor.isConnected.collect { isConnected ->
+                _uiState.value = _uiState.value.copy(
+                    isOfflineMode = !isConnected
+                )
+                
+                // Schedule sync when coming back online
+                if (isConnected && tokenManager.isLoggedIn()) {
+                    SyncWorker.scheduleImmediateSync(context)
+                }
+            }
+        }
+        
+        // Start periodic sync and load initial data
+        if (tokenManager.isLoggedIn()) {
+            SyncWorker.schedulePeriodicSync(context)
+            loadNotes()
+            observeNotes()
+        }
+    }
     
     // Monitor authentication state
     fun isLoggedIn(): Boolean = tokenManager.isLoggedIn()
@@ -63,7 +98,7 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
                 )
             }
             
-            when (val result = notesRepository.getNotes(page, pageSize)) {
+            when (val result = notesRepository.getNotes(page, pageSize, refresh)) {
                 is ApiResult.Success -> {
                     val notesData = result.data
                     _uiState.value = _uiState.value.copy(
@@ -108,44 +143,12 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
                 isNetworkError = false
             )
             
-            val result = if (currentSearchQuery != null) {
-                // Search by title first, then by description, then merge results
-                val titleResults = notesRepository.searchNotes(
-                    title = currentSearchQuery,
-                    description = null,
-                    page = page,
-                    pageSize = pageSize
-                )
-                
-                val descriptionResults = notesRepository.searchNotes(
-                    title = null,
-                    description = currentSearchQuery,
-                    page = page,
-                    pageSize = pageSize
-                )
-                
-                // Merge results and remove duplicates
-                when {
-                    titleResults is ApiResult.Success && descriptionResults is ApiResult.Success -> {
-                        val allNotes = (titleResults.data.results + descriptionResults.data.results)
-                            .distinctBy { it.id } // Remove duplicates by ID
-                            .sortedByDescending { it.updatedAt } // Sort by most recent
-                        
-                        val mergedResponse = titleResults.data.copy(
-                            results = allNotes,
-                            count = allNotes.size
-                        )
-                        ApiResult.Success(mergedResponse)
-                    }
-                    titleResults is ApiResult.Success -> titleResults
-                    descriptionResults is ApiResult.Success -> descriptionResults
-                    titleResults is ApiResult.Error -> titleResults
-                    descriptionResults is ApiResult.Error -> descriptionResults
-                    else -> ApiResult.Error("Search failed")
-                }
-            } else {
-                notesRepository.getNotes(page, pageSize)
-            }
+            val result = notesRepository.searchNotes(
+                title = currentSearchQuery,
+                description = currentSearchQuery,
+                page = page,
+                pageSize = pageSize
+            )
             
             when (result) {
                 is ApiResult.Success -> {
@@ -360,52 +363,7 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
     
-    fun createNotesBulk(notes: List<CreateNoteRequest>, onSuccess: (List<NoteResponse>) -> Unit) {
-        viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(
-                isLoading = true,
-                errorMessage = null,
-                successMessage = null,
-                isNetworkError = false
-            )
-            
-            when (val result = notesRepository.createNotesBulk(notes)) {
-                is ApiResult.Success -> {
-                    val notesData = result.data
-                    
-                    // Add the new notes to the beginning of the list
-                    val updatedNotes = notesData.results + _uiState.value.notes
-                    
-                    _uiState.value = _uiState.value.copy(
-                        isLoading = false,
-                        notes = updatedNotes,
-                        totalCount = _uiState.value.totalCount + notesData.results.size,
-                        successMessage = "${notesData.results.size} notes created successfully!",
-                        errorMessage = null
-                    )
-                    onSuccess(notesData.results)
-                }
-                is ApiResult.Error -> {
-                    val isAuthError = handleAuthenticationError(result.message)
-                    _uiState.value = _uiState.value.copy(
-                        isLoading = false,
-                        errorMessage = if (isAuthError) "Session expired. Please log in again." else result.message,
-                        isNetworkError = false
-                    )
-                    if (isAuthError) {
-                        // Handle logout or token refresh logic if needed
-                    }
-                }
-                is ApiResult.NetworkError -> {
-                    _uiState.value = _uiState.value.copy(
-                        isLoading = false,
-                        errorMessage = result.message,
-                        isNetworkError = true
-                    )
-                }
-            }
-        }
-    }
+
     
     fun loadNextPage() {
         if (_uiState.value.hasNextPage && !_uiState.value.isLoading) {
@@ -418,10 +376,51 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
     }
     
     fun refresh() {
-        if (currentSearchQuery != null) {
-            searchNotes(currentSearchQuery!!, 1)
-        } else {
-            loadNotes(1, refresh = true)
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(isSyncing = true)
+            
+            // Trigger background sync
+            SyncWorker.scheduleImmediateSync(context)
+            
+            if (currentSearchQuery != null) {
+                searchNotes(currentSearchQuery!!, 1)
+            } else {
+                loadNotes(1, refresh = true)
+            }
+            
+            _uiState.value = _uiState.value.copy(isSyncing = false)
+        }
+    }
+    
+    // Add manual sync function
+    fun syncNow() {
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(isSyncing = true)
+            
+            val result = notesRepository.syncWithServer()
+            when (result) {
+                is ApiResult.Success -> {
+                    _uiState.value = _uiState.value.copy(
+                        isSyncing = false,
+                        successMessage = "Sync completed successfully"
+                    )
+                    // Refresh current view
+                    refresh()
+                }
+                is ApiResult.Error -> {
+                    _uiState.value = _uiState.value.copy(
+                        isSyncing = false,
+                        errorMessage = result.message
+                    )
+                }
+                is ApiResult.NetworkError -> {
+                    _uiState.value = _uiState.value.copy(
+                        isSyncing = false,
+                        errorMessage = result.message,
+                        isNetworkError = true
+                    )
+                }
+            }
         }
     }
     
@@ -432,12 +431,40 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
         )
     }
     
+    // Observe notes in real-time
+    fun observeNotes() {
+        viewModelScope.launch {
+            notesRepository.getAllNotesFlow().collect { notes ->
+                _uiState.value = _uiState.value.copy(
+                    notes = notes,
+                    totalCount = notes.size
+                )
+            }
+        }
+    }
+    
+    fun observeSearchResults(query: String) {
+        viewModelScope.launch {
+            notesRepository.searchNotesFlow(query).collect { notes ->
+                _uiState.value = _uiState.value.copy(
+                    notes = notes,
+                    totalCount = notes.size
+                )
+            }
+        }
+    }
+    
     fun clearSuccess() {
         _uiState.value = _uiState.value.copy(successMessage = null)
     }
     
     fun clearCurrentNote() {
         _uiState.value = _uiState.value.copy(currentNote = null)
+    }
+    
+    override fun onCleared() {
+        super.onCleared()
+        networkMonitor.unregister()
     }
 }
 

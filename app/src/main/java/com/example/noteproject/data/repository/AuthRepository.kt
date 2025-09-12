@@ -291,4 +291,19 @@ class AuthRepository(
             }
         }
     }
+    
+    // Helper method to check if we have valid refresh token for offline mode
+    fun canRefreshToken(): Boolean {
+        val refreshToken = tokenManager.getRefreshToken()
+        return !refreshToken.isNullOrBlank()
+    }
+    
+    // Offline-aware refresh token method
+    suspend fun refreshAccessTokenIfPossible(): ApiResult<String> {
+        return if (canRefreshToken()) {
+            refreshAccessToken()
+        } else {
+            ApiResult.Error("No refresh token available")
+        }
+    }
 }
