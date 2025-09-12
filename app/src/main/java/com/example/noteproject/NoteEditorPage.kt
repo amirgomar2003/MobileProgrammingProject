@@ -54,7 +54,6 @@ fun NoteEditorPage(
                             onClick = { 
                                 // Validate that both fields are not blank before saving
                                 if (header.isBlank() || body.isBlank()) {
-                                    // Could show a toast or snackbar here if desired
                                     return@IconButton
                                 }
                                 onSave(header, body) 

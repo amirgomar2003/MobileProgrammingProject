@@ -47,7 +47,8 @@ fun NotesMainPage(
     hasNotes: Boolean = false, // Whether user has any notes (for search bar visibility)
     isOfflineMode: Boolean = false,
     isSyncing: Boolean = false,
-    onSyncClick: (() -> Unit)? = null
+    onSyncClick: (() -> Unit)? = null,
+    isDarkTheme: Boolean,
 ) {
     // Filter notes locally for immediate feedback, backend search will update the list
     val filteredNotes = if (searchQuery.isBlank()) {

@@ -261,15 +261,15 @@ class MainActivity : ComponentActivity() {
                                         }
                                     }
                                 },
-                                onSave = { currentTitle, currentBody -> 
+                                onSave = { currentTitle, currentBody ->
+                                    // Exception blank field.
                                     if (currentTitle.isBlank() || currentBody.isBlank()) {
                                         // Don't save notes with any blank fields, just go back
                                         navController.popBackStack()
                                         return@NoteEditorPage
                                     }
-                                    
+                                    // New note
                                     if (noteId == -1) {
-                                        // It's a new note, create it on backend
                                         // Both title and description are guaranteed to be non-blank due to validation above
                                         notesViewModel.createNote(
                                             title = currentTitle,
@@ -279,6 +279,7 @@ class MainActivity : ComponentActivity() {
                                             notes.add(0, createdNote.toUiNote())
                                             navController.popBackStack()
                                         }
+                                    // Temporarly note
                                     } else if (note.id < 0) {
                                         // It's a temporary note that was created in the old flow, create it on backend
                                         // Both title and description are guaranteed to be non-blank due to validation above
@@ -293,6 +294,7 @@ class MainActivity : ComponentActivity() {
                                             }
                                             navController.popBackStack()
                                         }
+                                    // Update note
                                     } else {
                                         // It's an existing note, update it
                                         notesViewModel.updateNote(
