@@ -198,7 +198,7 @@ fun RegisterScreen(
                 onToggle = onToggleTheme,
                 modifier = Modifier
                     .align(Alignment.TopEnd)
-                    .padding(16.dp)
+                    .padding(20.dp)
             )
         }
     }

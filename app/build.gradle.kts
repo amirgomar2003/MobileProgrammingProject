@@ -58,6 +58,9 @@ dependencies {
     // Room database dependencies
     implementation(libs.androidx.room.runtime)
     implementation(libs.androidx.room.ktx)
+    implementation(libs.androidx.datastore.core.android)
+    implementation(libs.androidx.datastore.preferences.core.android)
+    implementation(libs.androidx.datastore.preferences)
     ksp(libs.androidx.room.compiler)
     
     // Network dependencies

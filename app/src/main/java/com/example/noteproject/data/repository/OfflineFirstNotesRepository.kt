@@ -195,6 +195,12 @@ class OfflineFirstNotesRepository(
             
             noteDao.updateNote(updatedNote)
             
+            // If this is a local-only (temp) note, don't enqueue UPDATE operations.
+            // Its CREATE operation will be processed later using the current local values.
+            if (existingNote.isLocalOnly) {
+                return ApiResult.Success(updatedNote.toNoteResponse())
+            }
+            
             if (networkMonitor.isConnected.value && tokenManager.isLoggedIn()) {
                 // Try to sync immediately if online
                 val serverResult = updateNoteOnServer(id, title, description)
@@ -229,7 +235,15 @@ class OfflineFirstNotesRepository(
     
     suspend fun deleteNote(id: Int): ApiResult<Unit> {
         return try {
-            // Mark as deleted locally
+            val existing = noteDao.getNoteById(id)
+            if (existing != null && existing.isLocalOnly) {
+                // Never synced: delete locally and remove any queued ops for this temp note
+                noteDao.deleteNote(id)
+                pendingOperationDao.deletePendingOperationsForNote(id)
+                return ApiResult.Success(Unit)
+            }
+            
+            // Mark as deleted locally for synced notes
             noteDao.markNoteAsDeleted(id, SyncStatus.PENDING_DELETE)
             
             if (networkMonitor.isConnected.value && tokenManager.isLoggedIn()) {
@@ -287,9 +301,9 @@ class OfflineFirstNotesRepository(
     private suspend fun createNoteLocally(title: String, description: String): ApiResult<NoteResponse> {
         val noteEntity = noteDao.insertNoteWithTempId(title, description)
         
-        // Queue for server sync
+        // Queue for server sync and tie the CREATE op to the temp note ID
         addPendingOperation(PendingOperationEntity(
-            noteId = null, // null for new notes
+            noteId = noteEntity.id,
             operationType = OperationType.CREATE,
             title = title,
             description = description
@@ -303,8 +317,15 @@ class OfflineFirstNotesRepository(
             val response = apiClient.notesService.getNotes(page, pageSize)
             if (response.isSuccessful) {
                 response.body()?.let { paginatedResponse ->
-                    val noteEntities = paginatedResponse.results.map { it.toNoteEntity() }
-                    noteDao.insertNotes(noteEntities)
+                    // Insert/merge cautiously: don't resurrect locally pending-deleted notes
+                    for (serverNote in paginatedResponse.results) {
+                        val entity = serverNote.toNoteEntity()
+                        val local = noteDao.getNoteById(entity.id)
+                        // Skip to preserve local deletion until sync deletes on server
+                        if (!(local != null && local.isDeleted && local.syncStatus == SyncStatus.PENDING_DELETE)) {
+                            noteDao.insertNote(entity)
+                        }
+                    }
                 }
             }
         } catch (e: Exception) {
@@ -319,31 +340,45 @@ class OfflineFirstNotesRepository(
             try {
                 when (operation.operationType) {
                     OperationType.CREATE -> {
-                        operation.title?.let { title ->
-                            operation.description?.let { description ->
-                                val result = createNoteOnServer(title, description)
-                                if (result is ApiResult.Success) {
-                                    // Update local note with server ID
-                                    val localNote = noteDao.getUnsyncedNotes().find { 
-                                        it.title == title && it.description == description && it.isLocalOnly 
-                                    }
-                                    localNote?.let { note ->
-                                        noteDao.deleteNote(note.id) // Remove temp note
-                                        noteDao.insertNote(result.data.toNoteEntity()) // Insert with real ID
-                                    }
-                                    pendingOperationDao.deletePendingOperation(operation)
-                                }
+                        val localNote = operation.noteId?.let { noteDao.getNoteById(it) }
+                            ?: run {
+                                // Fallback to content match if no id was stored
+                                val title = operation.title
+                                val description = operation.description
+                                noteDao.getUnsyncedNotes().find { it.title == title && it.description == description && it.isLocalOnly }
+                            }
+                        // If the local note was deleted before syncing, drop the CREATE and clean up
+                        if (localNote == null || localNote.isDeleted) {
+                            localNote?.let { noteDao.deleteNote(it.id) }
+                            pendingOperationDao.deletePendingOperation(operation)
+                        } else {
+                            val result = createNoteOnServer(localNote.title, localNote.description)
+                            if (result is ApiResult.Success) {
+                                val serverEntity = result.data.toNoteEntity()
+                                // Remove temp note and insert server one
+                                noteDao.deleteNote(localNote.id)
+                                noteDao.insertNote(serverEntity)
+                                // Remap any queued UPDATE/DELETE ops that referred to the temp ID
+                                pendingOperationDao.remapNoteId(localNote.id, serverEntity.id)
+                                // Remove this CREATE op
+                                pendingOperationDao.deletePendingOperation(operation)
                             }
                         }
                     }
                     OperationType.UPDATE -> {
                         operation.noteId?.let { noteId ->
-                            operation.title?.let { title ->
-                                operation.description?.let { description ->
-                                    val result = updateNoteOnServer(noteId, title, description)
-                                    if (result is ApiResult.Success) {
-                                        noteDao.markNoteSynced(noteId)
-                                        pendingOperationDao.deletePendingOperation(operation)
+                            val local = noteDao.getNoteById(noteId)
+                            // If this refers to a local-only note, drop the UPDATE op (handled by CREATE later)
+                            if (local != null && local.isLocalOnly) {
+                                pendingOperationDao.deletePendingOperation(operation)
+                            } else {
+                                operation.title?.let { title ->
+                                    operation.description?.let { description ->
+                                        val result = updateNoteOnServer(noteId, title, description)
+                                        if (result is ApiResult.Success) {
+                                            noteDao.markNoteSynced(noteId)
+                                            pendingOperationDao.deletePendingOperation(operation)
+                                        }
                                     }
                                 }
                             }
@@ -351,10 +386,17 @@ class OfflineFirstNotesRepository(
                     }
                     OperationType.DELETE -> {
                         operation.noteId?.let { noteId ->
-                            val result = deleteNoteOnServer(noteId)
-                            if (result is ApiResult.Success) {
+                            val localNote = noteDao.getNoteById(noteId)
+                            // If note is local-only (never synced), delete locally and drop op
+                            if (localNote != null && localNote.isLocalOnly) {
                                 noteDao.deleteNote(noteId)
                                 pendingOperationDao.deletePendingOperation(operation)
+                            } else {
+                                val result = deleteNoteOnServer(noteId)
+                                if (result is ApiResult.Success) {
+                                    noteDao.deleteNote(noteId)
+                                    pendingOperationDao.deletePendingOperation(operation)
+                                }
                             }
                         }
                     }
@@ -447,6 +489,19 @@ class OfflineFirstNotesRepository(
             else -> {
                 ApiResult.NetworkError("Network error: ${e.message}")
             }
+        }
+    }
+    
+    // Method to clear all local data (useful when switching users)
+    suspend fun clearAllLocalData(): ApiResult<Unit> {
+        return try {
+            noteDao.clearAll()
+            pendingOperationDao.clearAll()
+            Log.d(TAG, "All local data cleared successfully")
+            ApiResult.Success(Unit)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error clearing local data", e)
+            ApiResult.Error("Failed to clear local data: ${e.message}")
         }
     }
 }

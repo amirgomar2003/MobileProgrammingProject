@@ -12,7 +12,7 @@ import java.util.concurrent.TimeUnit
 class ApiClient(private val tokenManager: TokenManager) {
     
     companion object {
-        private const val BASE_URL = "https://simple.darkube.app/"  // Use 10.0.2.2 for Android emulator to access localhost
+        private const val BASE_URL = "http://10.0.2.2:8000/"  // Use 10.0.2.2 for Android emulator to access localhost
         private const val TIMEOUT_SECONDS = 30L
     }
     

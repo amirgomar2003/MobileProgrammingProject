@@ -24,6 +24,12 @@ interface PendingOperationDao {
     
     @Query("DELETE FROM pending_operations WHERE noteId = :noteId")
     suspend fun deletePendingOperationsForNote(noteId: Int)
+
+    @Query("SELECT * FROM pending_operations WHERE noteId = :noteId")
+    suspend fun getPendingOperationsForNote(noteId: Int): List<PendingOperationEntity>
+
+    @Query("UPDATE pending_operations SET noteId = :newNoteId WHERE noteId = :oldNoteId")
+    suspend fun remapNoteId(oldNoteId: Int, newNoteId: Int)
     
     @Update
     suspend fun updatePendingOperation(operation: PendingOperationEntity)

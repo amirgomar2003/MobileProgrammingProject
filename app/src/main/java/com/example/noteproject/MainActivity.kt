@@ -10,6 +10,7 @@ import androidx.navigation.NavType
 import androidx.navigation.navArgument
 import androidx.navigation.compose.*
 import com.example.noteproject.ui.theme.NoteProjectTheme
+import com.example.noteproject.ui.theme.rememberDataStoreThemeState
 import com.example.noteproject.ui.components.Note
 import com.example.noteproject.ui.viewmodel.AuthViewModel
 import com.example.noteproject.ui.viewmodel.NotesViewModel
@@ -19,7 +20,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
-            var isDarkTheme by remember { mutableStateOf(false) }
+            var isDarkTheme by rememberDataStoreThemeState()
             var showLogoutDialog by remember { mutableStateOf(false) }
             val authViewModel: AuthViewModel = viewModel()
             val notesViewModel: NotesViewModel = viewModel()
@@ -27,7 +28,7 @@ class MainActivity : ComponentActivity() {
             val notesUiState by notesViewModel.uiState.collectAsState()
 
             // Convert backend notes to UI notes for backward compatibility
-            val notes = remember(notesUiState.notes) {
+            val notes = remember(notesUiState.notes, authUiState.isLoggedIn) {
                 mutableStateListOf<Note>().apply {
                     clear()
                     addAll(notesUiState.notes.map { it.toUiNote() })
@@ -40,11 +41,41 @@ class MainActivity : ComponentActivity() {
             // Track if user has any notes (for search bar visibility)
             var userHasNotes by remember { mutableStateOf(false) }
             
+            // Track current user to detect user switches
+            var currentUserId by remember { mutableStateOf<Int?>(null) }
+            
             // Update userHasNotes when loading all notes (not search results)
-            LaunchedEffect(notesUiState.notes, searchQuery) {
-                // Only update when not searching (to get the true total)
-                if (searchQuery.isBlank() && notesUiState.notes.isNotEmpty()) {
-                    userHasNotes = true
+            LaunchedEffect(notesUiState.notes, searchQuery, authUiState.isLoggedIn) {
+                // Only update when not searching (to get the true total) and user is logged in
+                if (authUiState.isLoggedIn && searchQuery.isBlank()) {
+                    userHasNotes = notesUiState.notes.isNotEmpty()
+                } else if (!authUiState.isLoggedIn) {
+                    userHasNotes = false
+                }
+            }
+            
+            // Handle user switches by tracking user ID changes
+            LaunchedEffect(authUiState.userInfo?.id, authUiState.isLoggedIn) {
+                val newUserId = authUiState.userInfo?.id
+                
+                if (authUiState.isLoggedIn && newUserId != null) {
+                    // User is logged in
+                    if (currentUserId != null && currentUserId != newUserId) {
+                        // Different user logged in - clear previous user's data
+                        notesViewModel.clearAllNotes()
+                        kotlinx.coroutines.delay(100) // Small delay to ensure clear completes
+                    }
+                    currentUserId = newUserId
+                    notesViewModel.loadNotes(refresh = true)
+                } else if (!authUiState.isLoggedIn) {
+                    // User logged out - clear all data
+                    if (currentUserId != null) {
+                        notesViewModel.clearAllNotes()
+                        notes.clear()
+                        searchQuery = ""
+                        userHasNotes = false
+                    }
+                    currentUserId = null
                 }
             }
             
@@ -55,13 +86,6 @@ class MainActivity : ComponentActivity() {
                     notesViewModel.searchNotes(searchQuery)
                 } else {
                     notesViewModel.loadNotes(refresh = true) // Reset to all notes when search is cleared
-                }
-            }
-            
-            // Load notes when user logs in
-            LaunchedEffect(authUiState.isLoggedIn) {
-                if (authUiState.isLoggedIn) {
-                    notesViewModel.loadNotes(refresh = true)
                 }
             }
 
@@ -168,7 +192,7 @@ class MainActivity : ComponentActivity() {
                                 notesViewModel.clearError()
                                 
                                 // Navigate to editor with special new note ID
-                                navController.navigate("note_editor/-1")
+                                navController.navigate("note_editor/0")
                             },
                             onNoteClick = { note ->
                                 navController.navigate("note_editor/${note.id}")
@@ -196,19 +220,20 @@ class MainActivity : ComponentActivity() {
                         "note_editor/{noteId}",
                         arguments = listOf(navArgument("noteId") { type = NavType.IntType })
                     ) { backStackEntry ->
-                        val noteId = backStackEntry.arguments?.getInt("noteId") ?: return@composable
+            val noteId = backStackEntry.arguments?.getInt("noteId") ?: return@composable
                         
                         // Handle new note creation (ID = -1)
-                        val note = if (noteId == -1) {
+            val note = if (noteId == 0) {
                             // Create a temporary note for new note creation
                             Note(
-                                id = -1,
+                id = 0,
                                 header = "",
                                 body = "",
                                 lastEdited = System.currentTimeMillis()
                             )
                         } else {
-                            notes.find { it.id == noteId }
+                            // Get note data directly from ViewModel's state to ensure we have the latest data
+                            notesUiState.notes.find { it.id == noteId }?.toUiNote()
                         }
                         
                         if (note != null) {
@@ -218,41 +243,31 @@ class MainActivity : ComponentActivity() {
                             NoteEditorPage(
                                 note = note,
                                 onHeaderChange = { newHeader ->
-                                    if (noteId != -1) {
-                                        note.header = newHeader
-                                        note.lastEdited = System.currentTimeMillis()
-                                    }
-                                    // For new notes (ID = -1), we don't need to update the note object
-                                    // since the editor manages its own state
+                                    // No-op: Editor manages its own state via remember(mutableStateOf)
+                                    // The final value will be passed to onSave
                                 },
                                 onBodyChange = { newBody ->
-                                    if (noteId != -1) {
-                                        note.body = newBody
-                                        note.lastEdited = System.currentTimeMillis()
-                                    }
-                                    // For new notes (ID = -1), we don't need to update the note object
+                                    // No-op: Editor manages its own state via remember(mutableStateOf)
+                                    // The final value will be passed to onSave
                                 },
                                 onBack = { 
-                                    // For new notes (ID = -1), just go back without saving
-                                    // For existing notes, only remove if empty and temporary
-                                    if (note.id < 0 && note.id != -1 && note.header.isBlank() && note.body.isBlank()) {
-                                        notes.remove(note)
-                                    }
+                                    // Just go back - temporary notes will be handled by the ViewModel
                                     navController.popBackStack() 
                                 },
                                 onDelete = { showDeleteDialog = true },
                                 showDeleteDialog = showDeleteDialog,
                                 onDismissDelete = { showDeleteDialog = false },
                                 onConfirmDelete = {
-                                    if (note.id == -1) {
+                                    if (note.id == 0) {
                                         // It's a new note, just go back
                                         showDeleteDialog = false
                                         navController.popBackStack("home", false)
                                     } else if (note.id < 0) {
-                                        // It's a temporary note, remove locally
-                                        notes.remove(note)
-                                        showDeleteDialog = false
-                                        navController.popBackStack("home", false)
+                                        // It's a temporary note, delete from ViewModel (which handles local deletion)
+                                        notesViewModel.deleteNote(note.id) {
+                                            showDeleteDialog = false
+                                            navController.popBackStack("home", false)
+                                        }
                                     } else {
                                         // It's a real note, delete from backend
                                         notesViewModel.deleteNote(note.id) {
@@ -269,29 +284,23 @@ class MainActivity : ComponentActivity() {
                                         return@NoteEditorPage
                                     }
                                     // New note
-                                    if (noteId == -1) {
+                                    if (noteId == 0) {
                                         // Both title and description are guaranteed to be non-blank due to validation above
                                         notesViewModel.createNote(
                                             title = currentTitle,
                                             description = currentBody
                                         ) { createdNote ->
-                                            // Add the new note to the front of the list
-                                            notes.add(0, createdNote.toUiNote())
+                                            // Note is automatically added to the ViewModel's state
                                             navController.popBackStack()
                                         }
                                     // Temporarly note
                                     } else if (note.id < 0) {
-                                        // It's a temporary note that was created in the old flow, create it on backend
-                                        // Both title and description are guaranteed to be non-blank due to validation above
-                                        notesViewModel.createNote(
+                                        // It's a temporary note created offline: update the local note; sync will create/merge later
+                                        notesViewModel.updateNote(
+                                            id = note.id,
                                             title = currentTitle,
                                             description = currentBody
-                                        ) { createdNote ->
-                                            // Replace the temporary note with the real one
-                                            val index = notes.indexOf(note)
-                                            if (index >= 0) {
-                                                notes[index] = createdNote.toUiNote()
-                                            }
+                                        ) { _ ->
                                             navController.popBackStack()
                                         }
                                     // Update note
@@ -302,11 +311,7 @@ class MainActivity : ComponentActivity() {
                                             title = currentTitle.ifBlank { "" },
                                             description = currentBody.ifBlank { "" }
                                         ) { updatedNote ->
-                                            // Update the local note with backend data
-                                            val index = notes.indexOf(note)
-                                            if (index >= 0) {
-                                                notes[index] = updatedNote.toUiNote()
-                                            }
+                                            // Note is automatically updated in the ViewModel's state
                                             navController.popBackStack()
                                         }
                                     }

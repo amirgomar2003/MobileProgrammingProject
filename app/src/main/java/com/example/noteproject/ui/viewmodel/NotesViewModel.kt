@@ -70,7 +70,8 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
         if (tokenManager.isLoggedIn()) {
             SyncWorker.schedulePeriodicSync(context)
             loadNotes()
-            observeNotes()
+            // Disable observeNotes() to avoid conflicts with manual updates
+            // observeNotes()
         }
     }
     
@@ -232,14 +233,10 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
             when (val result = notesRepository.createNote(title, description)) {
                 is ApiResult.Success -> {
                     val newNote = result.data
-                    
-                    // Add the new note to the beginning of the list
-                    val updatedNotes = listOf(newNote) + _uiState.value.notes
-                    
+                    // After creating, refresh notes from repository to ensure UI state is correct
+                    loadNotes(refresh = true)
                     _uiState.value = _uiState.value.copy(
                         isLoading = false,
-                        notes = updatedNotes,
-                        totalCount = _uiState.value.totalCount + 1,
                         successMessage = "Note created successfully!",
                         errorMessage = null
                     )
@@ -431,14 +428,17 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
         )
     }
     
-    // Observe notes in real-time
+    // Observe notes in real-time (only when not paginating or searching)
     fun observeNotes() {
         viewModelScope.launch {
             notesRepository.getAllNotesFlow().collect { notes ->
-                _uiState.value = _uiState.value.copy(
-                    notes = notes,
-                    totalCount = notes.size
-                )
+                // Only update if we're not in the middle of pagination or search
+                if (currentSearchQuery == null && _uiState.value.currentPage <= 1) {
+                    _uiState.value = _uiState.value.copy(
+                        notes = notes,
+                        totalCount = notes.size
+                    )
+                }
             }
         }
     }
@@ -460,6 +460,24 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
     
     fun clearCurrentNote() {
         _uiState.value = _uiState.value.copy(currentNote = null)
+    }
+    
+    fun clearAllNotes() {
+        viewModelScope.launch {
+            // Use the repository method to clear all local data
+            val result = notesRepository.clearAllLocalData()
+            
+            // Always update UI state to reflect empty notes, regardless of the result
+            _uiState.value = _uiState.value.copy(
+                notes = emptyList(),
+                currentNote = null,
+                totalCount = 0,
+                currentPage = 1,
+                hasNextPage = false,
+                hasPreviousPage = false,
+                errorMessage = if (result is ApiResult.Error) result.message else null
+            )
+        }
     }
     
     override fun onCleared() {

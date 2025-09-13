@@ -21,7 +21,11 @@ data class NoteResponse(
     @SerializedName("created_at")
     val createdAt: String,
     @SerializedName("updated_at") 
-    val updatedAt: String
+    val updatedAt: String,
+    @SerializedName("creator_name")
+    val creatorName: String? = null,
+    @SerializedName("creator_username")
+    val creatorUsername: String? = null
 )
 
 data class PaginatedNotesResponse(

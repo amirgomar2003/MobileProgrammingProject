@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.runtime.*
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -13,6 +14,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.LazyGridState
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.filled.Add
@@ -292,50 +295,69 @@ fun NotesMainPage(
                             )
                         }
                     }
-                    // Show notes grid
+                    // Show notes grid with infinite scroll
                     else -> {
-                    Spacer(Modifier.height(20.dp))
-                    LazyVerticalGrid(
-                        columns = GridCells.Fixed(2),
-                        contentPadding = PaddingValues(16.dp, 16.dp, 16.dp, 80.dp),
-                        modifier = Modifier.fillMaxSize()
-                    ) {
-                        items(filteredNotes) { note ->
-                            NoteCard(
-                                note = note,
-                                onClick = { onNoteClick(note) }
-                            )
-                        }
+                        val listState = rememberLazyGridState()
                         
-                        // Add loading indicator at the end if loading more
-                        if (isLoading && filteredNotes.isNotEmpty()) {
-                            items(1) {
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(16.dp),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    CircularProgressIndicator()
+                        // Infinite scroll effect
+                        LaunchedEffect(listState) {
+                            snapshotFlow { listState.layoutInfo }
+                                .collect { layoutInfo ->
+                                    val totalItems = layoutInfo.totalItemsCount
+                                    val lastVisibleIndex = layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
+                                    
+                                    // Trigger load more when user is 5 items away from the end
+                                    if (hasNextPage && !isLoading && totalItems > 0 && lastVisibleIndex >= totalItems - 6) {
+                                        onLoadMore?.invoke()
+                                    }
                                 }
-                            }
                         }
                         
-                        // Add load more button if there are more pages
-                        if (hasNextPage && !isLoading && onLoadMore != null) {
-                            items(1) {
-                                OutlinedButton(
-                                    onClick = onLoadMore,
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(16.dp)
-                                ) {
-                                    Text("Load More")
+                        Spacer(Modifier.height(20.dp))
+                        LazyVerticalGrid(
+                            columns = GridCells.Fixed(2),
+                            state = listState,
+                            contentPadding = PaddingValues(16.dp, 16.dp, 16.dp, 80.dp),
+                            modifier = Modifier.fillMaxSize()
+                        ) {
+                            items(filteredNotes) { note ->
+                                NoteCard(
+                                    note = note,
+                                    onClick = { onNoteClick(note) }
+                                )
+                            }
+                            
+                            // Add loading indicator at the end when loading more
+                            if (isLoading && filteredNotes.isNotEmpty()) {
+                                items(2) { // Span 2 columns for centered loading indicator
+                                    if (it == 0) {
+                                        Box(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(16.dp),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Row(
+                                                horizontalArrangement = Arrangement.Center,
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                CircularProgressIndicator(
+                                                    modifier = Modifier.size(24.dp),
+                                                    strokeWidth = 2.dp
+                                                )
+                                                Spacer(Modifier.width(12.dp))
+                                                Text(
+                                                    "Loading more notes...",
+                                                    style = MaterialTheme.typography.bodyMedium,
+                                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                                                )
+                                            }
+                                        }
+                                    }
                                 }
                             }
                         }
                     }
-                }
             }
         }
         } // Close when statement
